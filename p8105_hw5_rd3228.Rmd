@@ -1,0 +1,60 @@
+---
+title: "p8105_hw5_rd3228"
+author: "Renxuan Deng"
+date: "2025-11-10"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Problem 1
+```{r}
+check_shared_birthday <- function(n) {
+  birthdays <- sample(1:365, size = n, replace = TRUE)
+  has_duplicate <- length(birthdays) != length(unique(birthdays))
+  return(has_duplicate)
+}
+set.seed(123)
+
+group_sizes <- 2:50
+n_simulations <- 10000
+
+results <- matrix(NA, nrow = n_simulations, ncol = length(group_sizes))
+
+for (i in 1:length(group_sizes)) {
+  n <- group_sizes[i]
+  for (j in 1:n_simulations) {
+    results[j, i] <- check_shared_birthday(n)
+  }
+}
+
+probabilities <- colMeans(results)
+
+sim_data <- data.frame(
+  group_size = group_sizes,
+  probability = probabilities
+)
+
+library(ggplot2)
+ggplot(sim_data, aes(x = group_size, y = probability)) +
+  geom_line(color = "blue", size = 1.2) +
+  geom_point(color = "black", size = 1) +
+  labs(
+    title = "Birthday Paradox Simulation",
+    x = "Group Size",
+    y = "Probability of Shared Birthday",
+    caption = paste("Based on", n_simulations, "simulations per group size")
+  ) +
+  theme_minimal() +
+  scale_y_continuous(labels = scales::percent) +
+  geom_hline(yintercept = 0.5, linetype = "dashed", color = "red") +
+  annotate("text", x = 40, y = 0.55, label = "50% probability line", 
+           color = "red", size = 3)
+```
+
+
+The probability grows surprisingly quickly as group size increases. The probability that two person share a birthday reaches 50% when the group size just over 20, and when the group size is 50, this probability is nearly 100%.
+
+# Problem 2
