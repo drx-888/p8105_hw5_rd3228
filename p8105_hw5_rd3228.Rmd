@@ -10,6 +10,8 @@ knitr::opts_chunk$set(echo = TRUE)
 library(broom)
 library(ggplot2)
 library(dplyr)
+library(tidyverse)
+library(knitr)
 ```
 
 # Problem 1
@@ -147,7 +149,7 @@ estimate_data <- estimate_data[!is.na(estimate_data$estimate), ]
 ggplot(estimate_data, aes(x = mu, y = estimate, color = type, linetype = type)) +
   geom_line(size = 1.2) +
   geom_point(size = 2) +
-  geom_abline(intercept = 0, slope = 1, color = "darkgreen", linetype = "dotted", alpha = 0.7) +
+  geom_abline(intercept = 0, slope = 1, color = "black", linetype = "dotted", alpha = 0.7) +
   labs(
     title = "Parameter Estimates vs True Effect Size",
     x = "True Effect Size (μ)",
@@ -207,3 +209,96 @@ This occurs because
 
 
 4. **Regression to the mean:** The bias decreases as the true effect size increases
+
+# Problem 3
+**Raw Data Description:**
+
+
+uid:	Unique identifier for each case (e.g., Alb-000001)
+
+
+reported_date:	Date the homicide was reported (YYYYMMDD)
+
+
+victim_last:	Victim's last name
+
+
+victim_first:	Victim's first name
+
+
+victim_race:	Victim's race (e.g., White, Black, Hispanic, Asian, Other)
+
+
+victim_age:	Victim's age (numeric or "Unknown")
+
+
+victim_sex:	Victim's gender (Male, Female, Unknown)
+
+
+city:	City where the homicide occurred
+
+
+state:	State (e.g., NM, GA, MD)
+
+
+lat / lon:	Geographic coordinates of the incident (some missing)
+
+
+disposition:	Case status (e.g., Closed by arrest, Open/No arrest, Closed without arrest)
+
+```{r}
+homicide_data <- read_csv("./homicide-data.csv")
+
+homicide_summary <- homicide_data |>
+  mutate(city_state = paste(city, state, sep = ", ")) |>
+  group_by(city_state) |>
+  summarize(
+    total_homicides = n(),
+    unsolved_homicides = sum(disposition %in% c("Closed without arrest", "Open/No arrest"))
+  ) |>
+  arrange(desc(unsolved_homicides))
+
+head(homicide_summary) |> kable()
+
+baltimore_data <- homicide_summary |>
+  filter(city_state == "Baltimore, MD")
+
+baltimore_test <- prop.test(
+  x = baltimore_data$unsolved_homicides,
+  n = baltimore_data$total_homicides
+)
+
+baltimore_tidy <- baltimore_test |>
+  tidy() |>
+  select(estimate, conf.low, conf.high)
+
+baltimore_tidy |> kable()
+
+all_cities_test <- homicide_summary |>
+  mutate(
+    test_results = map2(unsolved_homicides, total_homicides, 
+                       \(x, y) prop.test(x = x, n = y)),
+    tidy_results = map(test_results, tidy)
+  ) |>
+  unnest(tidy_results) |>
+  select(city_state, total_homicides, unsolved_homicides, 
+         estimate, conf.low, conf.high) |>
+  arrange(estimate)
+
+head(all_cities_test) |> kable()
+
+all_cities_test |>
+  ggplot(aes(x = estimate, y = reorder(city_state, estimate))) +
+  geom_point(size = 2) +
+  geom_errorbarh(aes(xmin = conf.low, xmax = conf.high), height = 0.2) +
+  labs(
+    title = "Proportion of Unsolved Homicides by City",
+    x = "Proportion of Unsolved Homicides (with 95% CI)",
+    y = "City, State"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(hjust = 0.5, face = "bold"),
+    axis.text.y = element_text(size = 8)
+  )
+```
