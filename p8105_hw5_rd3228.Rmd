@@ -7,6 +7,9 @@ output: html_document
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
+library(broom)
+library(ggplot2)
+library(dplyr)
 ```
 
 # Problem 1
@@ -37,7 +40,6 @@ sim_data <- data.frame(
   probability = probabilities
 )
 
-library(ggplot2)
 ggplot(sim_data, aes(x = group_size, y = probability)) +
   geom_line(color = "blue", size = 1.2) +
   geom_point(color = "black", size = 1) +
@@ -58,3 +60,150 @@ ggplot(sim_data, aes(x = group_size, y = probability)) +
 The probability grows surprisingly quickly as group size increases. The probability that two person share a birthday reaches 50% when the group size just over 20, and when the group size is 50, this probability is nearly 100%.
 
 # Problem 2
+```{r}
+n <- 30
+sigma <- 5
+alpha <- 0.05
+n_sim <- 5000
+mu_values <- c(0, 1, 2, 3, 4, 5, 6)
+
+run_simulation <- function(mu, n, sigma, n_sim) {
+  results <- data.frame(
+    mu_hat = numeric(n_sim),
+    p_value = numeric(n_sim)
+  )
+  
+  for (i in 1:n_sim) {
+    x <- rnorm(n, mean = mu, sd = sigma)
+    test_result <- t.test(x, mu = 0)
+    tidy_result <- tidy(test_result)
+    
+    results$mu_hat[i] <- tidy_result$estimate
+    results$p_value[i] <- tidy_result$p.value
+  }
+  
+  return(results)
+}
+
+set.seed(123)
+
+all_results <- list()
+
+for (mu in mu_values) {
+  cat("Running simulations for μ =", mu, "\n")
+  all_results[[as.character(mu)]] <- run_simulation(mu, n, sigma, n_sim)
+}
+
+
+power_results <- data.frame(
+  mu = mu_values,
+  power = numeric(length(mu_values)),
+  avg_mu_hat = numeric(length(mu_values)),
+  avg_mu_hat_rejected = numeric(length(mu_values))
+)
+
+for (i in 1:length(mu_values)) {
+  mu <- mu_values[i]
+  results <- all_results[[as.character(mu)]]
+  
+  power_results$power[i] <- mean(results$p_value < alpha)
+  
+  power_results$avg_mu_hat[i] <- mean(results$mu_hat)
+  
+  rejected <- results[results$p_value < alpha, ]
+  if (nrow(rejected) > 0) {
+    power_results$avg_mu_hat_rejected[i] <- mean(rejected$mu_hat)
+  } else {
+    power_results$avg_mu_hat_rejected[i] <- NA
+  }
+}
+
+print(power_results)
+
+ggplot(power_results, aes(x = mu, y = power)) +
+  geom_line(color = "blue", size = 1.2) +
+  geom_point(color = "black", size = 2) +
+  labs(
+    title = "Statistical Power vs Effect Size",
+    x = "True Effect Size (μ)",
+    y = "Power (Probability of Rejecting H₀)",
+    caption = paste("n =", n, ", σ =", sigma, ", α =", alpha, ",", n_sim, "simulations per point")
+  ) +
+  theme_minimal() +
+  scale_y_continuous(limits = c(0, 1), labels = scales::percent) +
+  geom_hline(yintercept = 0.8, linetype = "dashed", color = "red", alpha = 0.7) +
+  annotate("text", x = 4, y = 0.85, label = "80% Power", color = "red") +
+  geom_hline(yintercept = alpha, linetype = "dashed", color = "gray", alpha = 0.7) +
+  annotate("text", x = 1, y = 0.1, label = paste("α =", alpha), color = "gray")
+
+estimate_data <- data.frame(
+  mu = rep(power_results$mu, 2),
+  estimate = c(power_results$avg_mu_hat, power_results$avg_mu_hat_rejected),
+  type = rep(c("All Samples", "Only When H₀ Rejected"), each = nrow(power_results))
+)
+
+estimate_data <- estimate_data[!is.na(estimate_data$estimate), ]
+
+ggplot(estimate_data, aes(x = mu, y = estimate, color = type, linetype = type)) +
+  geom_line(size = 1.2) +
+  geom_point(size = 2) +
+  geom_abline(intercept = 0, slope = 1, color = "darkgreen", linetype = "dotted", alpha = 0.7) +
+  labs(
+    title = "Parameter Estimates vs True Effect Size",
+    x = "True Effect Size (μ)",
+    y = "Average Estimate (μ̂)",
+    color = "Sample Type",
+    linetype = "Sample Type",
+    caption = paste("Reference line: y = x (perfect estimation)")
+  ) +
+  theme_minimal() +
+  scale_color_manual(values = c("All Samples" = "steelblue", "Only When H₀ Rejected" = "darkred")) +
+  scale_linetype_manual(values = c("All Samples" = "solid", "Only When H₀ Rejected" = "dashed"))
+```
+
+
+## **Relationship between Effect Size and Power**
+
+The first plot clearly shows that statistical power increases with effect size. This demonstrates the fundamental relationship in hypothesis testing: larger true effects are easier to detect with statistical significance.
+
+### Key observations:
+
+When μ = 0 (null hypothesis is true), the rejection rate is approximately 5%, which equals our α level
+
+
+Power increases monotonically with effect size
+
+
+The curve has a characteristic S-shape, with rapid increase in the middle range of effect sizes
+
+
+At μ = 6, power approaches 100%, meaning we almost always detect this large effect
+
+## **Properties of Parameter Estimates**
+
+The second plot reveals an important phenomenon: the average estimate of μ from statistically significant results is biased upward.
+
+**Explanation:**
+
+The black dotted line (y = x) represents unbiased estimation
+
+
+The blue line (all samples) closely follows this line, showing that overall, our estimates are unbiased
+
+
+However, the red dashed line (only when H₀ is rejected) lies above the true values for smaller effect sizes
+
+
+This occurs because
+
+
+1. **Selection bias:** We're only looking at results that passed the significance threshold
+
+
+2. **Random variation:** For small true effects, we need a relatively large positive sampling error to achieve statistical significance
+
+
+3. **Asymmetry:** For μ close to 0, negative sampling errors are less likely to produce significant results
+
+
+4. **Regression to the mean:** The bias decreases as the true effect size increases
